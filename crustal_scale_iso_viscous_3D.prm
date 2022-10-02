@@ -1,0 +1,487 @@
+#####################################################################
+# 3D large scale model for comparing small scale (model based)
+# models with natural scale. Base .prm file for simple set up
+# without temperature conditions. Boundary conditions are according
+# to typical natural values upscaled from small scale models
+# Simple setup with a brittle upper and lower viscous crust.
+
+# ---------------- # 
+# Date: 5.5.2022   #
+# ---------------- #
+
+# Model dimensions
+#
+#                               width: 150 km 
+#             _______________________________________________
+#        <--  |             upper (15 km height)            | -->
+#             |                     __                      |
+#        <--  |____________________/  \_____________________| -->
+#  2.5mm/a    |            seed (radius = 1.0 km)           |    2.5mm/a
+#        <--  |                                             | -->
+#             |             lower (15 km height)            |
+#        <--  ----------------------------------------------- --> 
+#                            free slip boundary 
+#
+
+
+# ADDITIONAL LIBRARIES
+# =====================================================================================================================
+# libraries for adding noise and changing layer thicknesses in a more
+# elegant / easier way than functions
+
+set Additional shared libraries = /home/projects/bbp00039/fastscape_build_files/additional_plugins/lith_plugin/release_10dev/libriftplugin_d10.so
+
+
+# ENSURE CONTINUATION
+# =====================================================================================================================
+
+set Resume computation = auto
+
+subsection Checkpointing # create restart files
+  set Steps between checkpoint  = 5
+end
+
+
+# DEFINE GLOBAL PARAMETERS
+# =====================================================================================================================
+
+set Use years in output instead of seconds = true
+set Dimension                              = 3
+set Start time                             = 0
+set End time                               = 4e6
+set CFL number                             = 0.4
+set Maximum time step                      = 50e3
+
+set Pressure normalization                 = no
+
+set Output directory                       = output
+set Timing output frequency                = 1
+
+set Nonlinear solver scheme       = single Advection, iterated Newton Stokes
+set Max nonlinear iterations      = 30        # check log file to see how many are needed based on solution
+set Nonlinear solver tolerance    = 5e-5      # check log file to see to which value the solution converges
+set Max nonlinear iterations in pre-refinement  = 0
+
+
+# SOLVER PARAMETERS
+# =====================================================================================================================
+
+subsection Solver parameters
+  subsection Stokes solver parameters
+    set Number of cheap Stokes solver steps = 200
+    set Linear solver tolerance = 1e-5
+  end
+
+  subsection Newton solver parameters
+    set Max Newton line search iterations        = 5
+    set Max pre-Newton nonlinear iterations      = 20
+    set Maximum linear Stokes solver tolerance   = 1e-1
+    set Nonlinear Newton solver switch tolerance = 1e-5
+    set SPD safety factor                        = 0.9
+    set Stabilization preconditioner             = SPD
+    set Stabilization velocity block             = SPD
+    set Use Newton failsafe                      = false
+    set Use Newton residual scaling method       = false
+    set Use Eisenstat Walker method for Picard iterations = true
+  end
+end
+
+
+# DEFINE MODEL GEOMETRY
+# =====================================================================================================================
+# ideally, repetitions (cells) are cubic --> check repetitions with
+# physical extent!
+
+subsection Geometry model
+  set Model name = box
+
+  subsection Box
+    set X extent      = 150e3
+    set Y extent      = 150e3
+    set Z extent      = 30e3
+
+    set X repetitions = 25
+    set Y repetitions = 25
+    set Z repetitions = 5
+  end
+end
+
+
+# MESH REFINEMENT AND MESH DEFORMATION
+# =====================================================================================================================
+# some comments on mesh refinement: adaptive refinement can be tricky
+# in brittle deformation and might give faults that are a result of 
+# the refinement --> better solution for now: define geometry where 
+# grid should be refined homogeneously to give more "freedom" to 
+# deformation
+
+# Basic grid is defined by repetitions (cells per dimension). Further
+# refinement splits cells in two equal subcells --> total/maximum refinement
+# is the sum of initial global and adaptive refinement. The number of total
+# cells becomes important again for noise spacing
+
+# A comment on refinement strategy:
+# MINIMUM REFINEMENT FUNCTION: A mesh refinement criterion that ensures a minimum refinement level described by an
+# explicit formula with the depth or position as argument. Which coordinate representation is used is determined by 
+# an input parameter. Whatever the coordinate system chosen, the function you provide in the input file will by 
+# default depend on variables ‘x’, ‘y’ and ‘z’ (if in 3d). However, the meaning of these symbols depends on the 
+# coordinate system. In the Cartesian coordinate system, they simply refer to their natural meaning. If you have 
+# selected ‘depth’ for the coordinate system, then ‘x’ refers to the depth variable and ‘y’ and ‘z’ will simply 
+# always be zero.
+
+# Version 2: Mesh refinement based on geometry ------------------------------------------------------------------------
+subsection Mesh refinement
+  set Initial global refinement          = 0
+  set Initial adaptive refinement        = 4
+  set Time steps between mesh refinement = 0
+
+  set Strategy  = minimum refinement function # define a specific area where faulting occurs
+
+  subsection Minimum refinement function
+    set Coordinate system = cartesian
+    set Function expression = if(z>=15e3, if(z>=29e3, 4, if(x>=12.5e3 && x<=137.5e3 && y>=12.5e3 && y<=137.5e3, 3, 3)), 2)
+  end
+end
+# Version 2: Mesh refinement based on geometry ------------------------------------------------------------------------
+
+subsection Mesh deformation
+  set Mesh deformation boundary indicators                    = top: free surface, top: diffusion #fastscape
+  set Additional tangential mesh velocity boundary indicators = left, right, front, back
+  set Surface stabilization theta                             = 0.5
+
+  subsection Diffusion
+    set Hillslope transport coefficient = 1.0e-8
+  end
+
+  subsection Free surface
+    set Surface velocity projection      = normal
+  end
+end
+
+
+# VELOCITY BOUNDARY AND INITIAL CONDITIONS
+# =====================================================================================================================
+
+subsection Boundary velocity model
+  set Prescribed velocity boundary indicators = left x: function, right x: function, front y: function, back y: function, bottom z: function
+
+  subsection Function
+    set Coordinate system    = cartesian
+    set Variable names       = x,y,z
+    set Function constants   = year = 1, model_width = 150e3, model_height = 30e3, vx = 0.005
+    set Function expression  = vx/year/model_width*x -vx/2/year ; 0 ; vx/year * model_height / model_width
+  end
+end
+
+
+# SEED COORDINATES
+# =====================================================================================================================
+
+# Continuous:
+#                     (segment 1)            \             (segment 2)            \             (segment 3)
+# 10 deg: 7.500e4,0.000e4 > 7.500e4,7.500e4; \ 7.500e4,7.500e4 > 6.8440e4,1.500e5; \ 7.500e4,7.500e4 > 8.1560e4,1.500e5
+# 20 deg: 7.500e4,0.000e4 > 7.500e4,7.500e4; \ 7.500e4,7.500e4 > 6.1775e4,1.500e5; \ 7.500e4,7.500e4 > 8.8225e4,1.500e5
+# 30 deg: 7.500e4,0.000e4 > 7.500e4,7.500e4; \ 7.500e4,7.500e4 > 5.4905e4,1.500e5; \ 7.500e4,7.500e4 > 9.5095e4,1.500e5
+# 40 deg: 7.500e4,0.000e4 > 7.500e4,7.500e4; \ 7.500e4,7.500e4 > 4.7700e4,1.500e5; \ 7.500e4,7.500e4 > 1.0230e5,1.500e5
+# 50 deg: 7.500e4,0.000e4 > 7.500e4,7.500e4; \ 7.500e4,7.500e4 > 4.0025e4,1.500e5; \ 7.500e4,7.500e4 > 1.0998e5,1.500e5
+# 60 deg: 7.500e4,0.000e4 > 7.500e4,7.500e4; \ 7.500e4,7.500e4 > 3.1700e4,1.500e5; \ 7.500e4,7.500e4 > 1.1830e5,1.500e5
+
+# Gap:
+#                     (segment 1)            \             (segment 2)            \             (segment 3)
+# 10 deg: 7.500e4,0.000e4 > 7.500e4,2.500e4; \ 7.0640e4,1.24810e5 > 6.8440e4,1.500e5; \ 7.9360e4,1.24810e5 > 8.1560e4,1.500e5
+# 20 deg: 7.500e4,0.000e4 > 7.500e4,2.500e4; \ 6.6315e4,1.24240e5 > 6.1775e4,1.500e5; \ 8.3685e4,1.24240e5 > 8.8225e4,1.500e5
+# 30 deg: 7.500e4,0.000e4 > 7.500e4,2.500e4; \ 6.2060e4,1.23300e5 > 5.4900e4,1.500e5; \ 8.7940e4,1.23300e5 > 9.5095e4,1.500e5
+# 40 deg: 7.500e4,0.000e4 > 7.500e4,2.500e4; \ 5.7900e4,1.21985e5 > 4.7700e4,1.500e5; \ 9.2100e4,1.21985e5 > 1.0230e5,1.500e5
+# 50 deg: 7.500e4,0.000e4 > 7.500e4,2.500e4; \ 5.3870e4,1.20310e5 > 4.0025e4,1.500e5; \ 9.6130e4,1.20310e5 > 1.0998e5,1.500e5
+# 60 deg: 7.500e4,0.000e4 > 7.500e4,2.500e4; \ 5.0000e4,1.18300e5 > 3.1700e4,1.500e5; \ 1.0000e5,1.18300e5 > 1.1830e5,1.500e5
+
+
+# DEFINE COMPOSITIONAL FIELDS AND NOISE
+# =====================================================================================================================
+# Version 2: Viscous seed geometry with plugin ------------------------------------------------------------------------
+# attention: _Plugin_InitialCompositionRift requires a field called mantle_L that cannot be 0! Solution for crustal
+# setup: split up lower layer into two equally thick layers with the same material properties
+# There is yet an unclear implementation of layer thinning when using polylines (artefacts in the mantle_L layer
+# causing background occurrence). This is solved by making the mantle_L layer thicker --> model is cut off by 
+# Y-Extent further up in the geometry model subsection.
+
+subsection Compositional fields
+  set Number of fields = 5
+  set Names of fields  = plastic_strain, viscous_strain, upper, lower, mantle_L
+end
+
+subsection Initial composition model
+  set List of model names = lithosphere with rift, rift
+
+  subsection Lithosphere with rift
+    # Reference thicknesses
+    set Layer thicknesses = 15.1e3, 20.9e3, 70.0e3
+
+    # Choose whether polygons and polylines are blended. If 'false', polygon layer thicknesses override polyline thinning
+    set Blend polygons and rifts = true
+
+    # POLYLINE SECTION ------------------------------------------------------------------------------------------------
+    set Standard deviation of Gaussian rift geometry   = 1.0e3
+
+    # These factors define how much thinner the inherited domain thicknesses are than the undisturbed layer thickness 
+    # example: 0.1 inherited domain will be 10% thinner that the undisturbed domain
+    # (mantleL_orig-mantleL_thin)/mantleL_orig=(80-60)/80=0.25
+
+    # order:                                             upper, lower, mantle_L
+    set Amplitude of Gaussian rift geometry            =   0.1 , 0.0 , 0.0
+
+    # Syntax: LineSegmentA;\
+    #         LineSegmentB;\
+    #         LineSegmentC
+    # Syntax: where LineSegment is point1_x,point1_y>point2_x,point2_y
+    set Rift axis line segments                        = 7.500e4,0.000e4    > 7.500e4 ,2.500e4;\
+                                                         5.3870e4,1.20310e5 > 4.0025e4,1.500e5;\
+                                                         9.6130e4,1.20310e5 > 1.0998e5,1.500e5
+
+    # POLYGON SECTION -------------------------------------------------------------------------------------------------
+    # Thicknesses in the additional polygon area. No effects when they equal 'Layer thicknesses'.
+    # No scaling factor, only absolute values.
+    # Syntax: Point1;\
+    #         Point2
+    # Syntax: where Point is point_x,point_y
+
+    # order:                                             upper, lower, mantle_L
+    set Lithospheric polygon layer thicknesses         =  15.1e3, 20.9e3, 70.0e3
+    # Syntax:                                            point_x, point_y
+    set Lithospheric polygons                          =  72.5e3,0  > 77.5e3,0 > 77.5e3,150e3 > 72.5e3,150e3
+
+    # lateral transition to reference thickness
+    set Half width of polygon smoothing                = 2.5e3
+  end
+# Version 2: Viscous seed geometry with plugins -----------------------------------------------------------------------
+
+
+# INHERITED NOISE
+# =====================================================================================================================
+  subsection Rift
+    set Standard deviation of Gaussian noise amplitude distribution   = 50e3   # width of gaussian (2*sigma)
+    set Maximum amplitude of Gaussian noise amplitude distribution    = 0.1    # Amplitude (max val)
+    set Random number generator seed                                  = 0      # seed generation
+    set Depth around which Gaussian noise is smoothed out             = 5e5    # check for default 
+    set Halfwidth with which Gaussian noise is smoothed out in depth  = 6e5    # check for default
+
+    # The rift polygon specified in cartesian surface coordinates (x and y)
+    set Rift axis line segments = 7.500e4,0.000e4 > 7.500e4,15.00e4;\
+				                          			                          
+    # The resolution of the table that holds the noise values
+    # Bilinear interpolation between these values is performed when necessary
+    # should ideally be identical with max cell number after total refinement --> check active cells in output ~X*Y
+    set Grid intervals for noise X or radius    = 400
+    set Grid intervals for noise Y or longitude = 400
+    set Grid intervals for noise Z or latitude  = 80
+  end
+end
+
+subsection Boundary composition model
+  set Fixed composition boundary indicators = bottom
+  set List of model names = initial composition
+end
+
+
+# TEMPERATURE BOUNDARY AND INITIAL CONDITIONS --> THIS SECTION IS NOT USED!!!
+# =====================================================================================================================
+
+set Adiabatic surface temperature = 1557
+
+subsection Boundary temperature model
+  set List of model names = initial temperature, box
+  set List of model operators = add, minimum
+  set Fixed temperature boundary indicators = bottom, top
+
+  subsection Box
+    set Top temperature     = 270
+    set Bottom temperature  = 5000 # Unrealistically high, so it'staken from initial temperature plugin
+  end
+end
+
+# Take the minimum of the continental geotherm
+# and the adiabat with 'Adiabatic surface temperature'
+subsection Initial temperature model
+  set List of model names = lithosphere with rift, adiabatic
+  set List of model operators = add, minimum
+
+  subsection Lithosphere with rift
+    set LAB isotherm temperature = 1557.
+    set Surface temperature      = 270.
+    # Whether or not to prescribe the LAB depth up to a
+    # certain depth (in area below LAB)
+    # or use adiabat everywhere
+    set Use temperature compensation depth = true
+    set Temperature compensation depth = 120e3
+  end
+
+  subsection Adiabatic
+    # A reference profile of the compositional fields
+    # where x represents depth
+    # Attention: make sure it is the same as in "subsection Adiabatic conditions model" below --> identical to reference thicknesses
+    subsection Function
+      set Function expression   = 0; \
+                                  0; \
+                                  if(x<15.1e3,1,0); \
+                                  if(x>=15.1e3&x<36e3,1,0); \
+                                  if(x>=36e3&x<106e3,1,0)
+    end
+  set Age top boundary layer        = 0
+  set Age bottom boundary layer     = 0
+  end
+end
+
+subsection Adiabatic conditions model
+  subsection Compute profile
+    set Composition reference profile = function
+    # In terms of depth
+    # Moho depth 30 km, LAB depth 120 km (i.e. max depth in model)
+    # Attention: make sure it is the same as in "subsection Initial temperature model" above
+    set Function expression   = 0; \
+                                0; \
+                                if(x<15.1e3,1,0); \
+                                if(x>=15.1e3&x<36e3,1,0); \
+                                if(x>=36e3&x<106e3,1,0)
+  end
+end
+
+# we average radiogenic heating from the upper and lower crust
+subsection Heating model
+  set List of model names = compositional heating, adiabatic heating # radiogenic heating
+  subsection Compositional heating
+    # order:     background, strain_plastic, strain_viscous, upper, lower,  mantle_L
+    set Use compositional field for heat production averaging =   0,  0,  0,       1,       1,    1
+    set Compositional heating values                          =   0,  0,  0,  0.7e-6,  0.7e-6,    0
+  end
+end
+
+
+# MATERIAL MODEL
+# =====================================================================================================================
+
+subsection Material model
+  set Model name = visco plastic
+
+  subsection Visco Plastic
+
+    # Reference Values for scaling/nondimensionalization. Quantities 
+    # must be scaled in such a way that their magnitudes are roughly
+    # the same. For problems with a constant viscosity, reference viscosity 
+    # should be chosen to be equal to the value that adequately represents 
+    # the order of magnitudes of the viscosities that appear.
+
+    # Reference temperature and viscosity
+    set Reference temperature = 293
+    set Reference viscosity   = 1e22
+
+    # Reference strain rate for the first time step:
+    # Take as an approximation e_init = dV_x/Lx --> 1.0e-5
+    set Reference strain rate = 1.0e-16
+
+    # cut off for deformation
+    set Minimum strain rate  = 1e-25
+    
+    # viscosity cut offs
+    set Minimum viscosity    = 1e19
+    set Maximum viscosity    = 1e24
+
+    # order: background,   strain_plastic,   strain_viscous,     upper,     lower,  mantle_L
+
+      set Thermal diffusivities = 8.333333e-7, 8.333333e-7, 8.333333e-7, 7.71604938271605e-07,  7.71604938271605e-07,  8.384146341463415e-07
+      set Heat capacities       =        1200
+      set Densities             =        3300,        1000,        1000,                 2700,                  2900,                   3280
+      set Thermal expansivities =        3e-5,        3e-5,        3e-5,               2.7e-5,                2.7e-5,                 3.0e-5
+
+    set Viscosity averaging scheme = harmonic
+    set Viscous flow law           = dislocation
+
+   # Choose to have the viscosity (pre-yield) follow a dislocation
+   # diffusion or composite flow law.  Here, dislocation is selected
+   # so no need to specify diffusion creep parameters below, which are
+   # only used if "diffusion" or "composite" option is selected.
+   #set Viscous flow law = composite
+
+   # Dislocation creep parameters for 
+   # 1. Background material/mantle (dry olivine)
+   #    Hirth & Kohlstedt (2003),  Geophys. Monogr. Am. Geophys. Soc., v.138, p.83-105.
+   #    "Rheology of the upper mantle and the mantle wedge:a view from the experimentalists"
+   # 2. Upper crust (wet quartzite)
+   #    Rutter & Brodie (2004), J. Struct. Geol., v.26, p.2011-2023.
+   #    "Experimental grain size-sensitive flow of hot-pressed Brazilian quartz aggregates"
+   # 3. Lower crust and weak seed (wet anorthite)
+   #    Rybacki et al. (2006), J. Geophys. Res., v.111(B3).
+   #    "Influence of water fugacity and activation volume on the flow properties of fine-grained    
+   #    anorthite aggregates"
+   # Note that the viscous pre-factors below are scaled to plane strain from unixial strain experiments.
+
+   # Check Glerum et al. 2018 for prefactor B --> B = (1/B)^(1/n)
+   # For dislocation creep: mu_eff = 1/2*beta*(1/B)^(1/n)*strain_rate_eff^((1-n)/n)
+   # For linear viscosity: n = 1, mu_eff = 1/2*beta*(1/B) and beta = 1 (?) and mu_eff = Reference viscosity
+   # For viscous material: B = 1/(2*mu_eff), with mu_eff the requested viscosity --> to test: 1/(2*B) = mu_eff
+   # For brittle material: B close to zero, so that mu_eff extremely large
+
+    # order:                                           bg    ,  pl strain  ,  visc strain ,    upper  ,     lower  ,    mantle_L
+
+    set Prefactors for dislocation creep          = 2.12e-15 ,      1e-20  ,        1e-20 ,     1e-28 ,    0.5e-20 ,     0.5e-20
+    set Stress exponents for dislocation creep    =      1.0 ,        1.0  ,          1.0 ,       1.0 ,        1.0 ,         1.0
+    set Activation energies for dislocation creep =        0 ,          0  ,            0 ,         0 ,          0 ,           0
+    set Activation volumes for dislocation creep  =        0 ,          0  ,            0 ,         0 ,          0 ,           0
+
+    # For plastic yielding: mu_eff is rescaled in order not to exceed yield stress sigma_y
+    # mu_eff = sigma_y/(2*strain_rate_eff) and
+    # sigma_y = C*cos(theta) + sin(theta) * P --> Drucker-Prager in 2D!
+
+    # Plasticity parameters
+    set Angles of internal friction = 26.56 
+    set Cohesions                   = 1e9,  1e9,  1e9,  5e6,  1e9,  1e9
+
+    # Strain weakening parameters
+    set Strain weakening mechanism = plastic weakening with plastic strain and viscous weakening with viscous strain
+
+    # the resulting strain-weakening factor is multiplied to the brittle parameter (i.e. weakening if it is < 1)
+    set Start plasticity strain weakening intervals = 0.0
+    set End plasticity strain weakening intervals   = 1.0
+
+    # order: background,   strain_plastic,   strain_viscous,     upper,     lower,   mantle_L
+    set Cohesion strain weakening factors  = 1.0
+    set Friction strain weakening factors  = 0.25
+  end
+end
+
+
+# GRAVITY MODEL
+# =====================================================================================================================
+
+subsection Gravity model
+  set Model name = vertical
+
+  subsection Vertical
+    set Magnitude = 9.81
+  end
+end
+
+
+# POSTPROCESSING
+# =====================================================================================================================
+
+subsection Postprocess
+  set List of postprocessors  = velocity statistics, basic statistics, visualization, mass flux statistics, composition statistics, topography
+
+  subsection Topography
+    set Output to file = true
+    set Time between text output = 1e5
+  end
+
+  subsection Visualization
+    set Interpolate output = true # double res. and lin. interp. for paraview -> artificially improved res if active
+    set List of output variables = strain rate, viscosity, named additional outputs, surface strain rate, surface stress, surface maximum horizontal compressive stress, depth, principal stress, stress regime, surface stress regime
+    set Output base variables on mesh surface = true
+    set Time between graphical output = 1e5 # for testing every 5 minutes (every 300 seconds)
+    set Output format                 = vtu
+    set Point-wise stress and strain  = true
+
+    subsection Principal stress
+      set Use deviatoric stress = true # use deviatoric stress tensor compute Evecs & Evals.
+    end
+  end
+end
