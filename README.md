@@ -9,5 +9,5 @@ ASPECT input files (.prm) for reproducing numerical modelling results and script
 
 - ASPECT input file (crustal_scale_iso_viscous_3D.prm)
 - Python script for extracting stress component S<sub>Hmax</sub> (extract_stress_via_temp_and_strain_rate_threshold.py)
-- MATLAB script for visualising S_{Hmax} distribution in rose diagrams
+- MATLAB script for visualising S<sub>Hmax</sub> distribution in rose diagrams
 
