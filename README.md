@@ -1,1 +1,13 @@
-# tectonic_interaction_numerical
+# Additional scripts to:
+
+## Tectonic interactions during rift linkage: Insights from analogue and numerical experiments
+### (to be updated)
+
+
+# Content:
+ASPECT input files (.prm) for reproducing numerical modelling results and scripts for data post-processing
+
+- ASPECT input file (crustal_scale_iso_viscous_3D.prm)
+- Python script for extracting stress component S_{Hmax} (extract_stress_via_temp_and_strain_rate_threshold.py)
+- MATLAB script for visualising S_{Hmax} distribution in rose diagrams
+
